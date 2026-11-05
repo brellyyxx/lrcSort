@@ -55,17 +55,14 @@ export function formatLrcTime(seconds: number): string {
 }
 
 /**
- * Converts LyricsLine[] back to LRC formatted string
+ * Converts LyricsLine[] back to pure clean LRC formatted string without metadata headers
  */
-export function stringifyLrc(lines: LyricsLine[], metadata?: { title?: string; artist?: string; album?: string }): string {
-  const metaLines: string[] = [];
-  if (metadata?.title) metaLines.push(`[ti:${metadata.title}]`);
-  if (metadata?.artist) metaLines.push(`[ar:${metadata.artist}]`);
-  if (metadata?.album) metaLines.push(`[al:${metadata.album}]`);
-  metaLines.push(`[by:LRC Hub]`);
-
-  const lyricLines = lines.map(line => `[${formatLrcTime(line.time)}] ${line.text}`);
-  return [...metaLines, ...lyricLines].join('\n');
+export function stringifyLrc(lines: LyricsLine[]): string {
+  return lines
+    .filter(line => line.text !== undefined && line.text !== null)
+    .sort((a, b) => a.time - b.time)
+    .map(line => `[${formatLrcTime(line.time)}] ${line.text}`)
+    .join('\n');
 }
 
 /**

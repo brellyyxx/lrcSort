@@ -12,6 +12,7 @@ import {
   Filter,
   Sparkles,
   Check,
+  Clock,
 } from 'lucide-react';
 
 interface SongTableProps {
@@ -22,6 +23,7 @@ interface SongTableProps {
   ) => void;
   onOpenViewer: (song: SongFile) => void;
   onOpenSearch: (song: SongFile) => void;
+  onOpenCreator: (song: SongFile) => void;
   onDownloadLrc: (song: SongFile) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
@@ -33,6 +35,7 @@ export const SongTable: React.FC<SongTableProps> = ({
   onToggleNoLyrics,
   onOpenViewer,
   onOpenSearch,
+  onOpenCreator,
   onDownloadLrc,
   selectedIds,
   onToggleSelect,
@@ -239,6 +242,16 @@ export const SongTable: React.FC<SongTableProps> = ({
                       >
                         <Search className="w-3 h-3" />
                         <span>Suchen</span>
+                      </button>
+
+                      {/* LRC Creator / Tapping */}
+                      <button
+                        onClick={() => onOpenCreator(song)}
+                        title="Im LRC Creator selber timen (Leertaste-Sync)"
+                        className="px-2.5 py-1 text-[11px] font-medium text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg transition-colors inline-flex items-center gap-1"
+                      >
+                        <Clock className="w-3 h-3 text-emerald-400" />
+                        <span>Timen</span>
                       </button>
 
                       {/* Karaoke & Preview if has LRC */}

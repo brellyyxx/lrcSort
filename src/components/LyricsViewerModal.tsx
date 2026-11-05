@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SongFile, LyricsLine } from '../types';
 import { parseLrc, adjustLrcOffset, stringifyLrc } from '../utils/lrcParser';
+import { generateDemoAudioTrack } from '../utils/audioGenerator';
 import { X, Play, Pause, RotateCcw, Download, Edit3, Check, FastForward, Rewind, Music, Volume2 } from 'lucide-react';
 
 interface LyricsViewerModalProps {
@@ -39,8 +40,15 @@ export const LyricsViewerModal: React.FC<LyricsViewerModalProps> = ({
   // Handle audio simulation or real audio file
   useEffect(() => {
     let objectUrl = '';
-    if (song.fileObj) {
-      objectUrl = URL.createObjectURL(song.fileObj);
+    let fileToPlay = song.fileObj;
+
+    if (!fileToPlay) {
+      // Use synthesized rhythm track for demo or when audio file isn't loaded
+      fileToPlay = generateDemoAudioTrack(240, 115);
+    }
+
+    if (fileToPlay) {
+      objectUrl = URL.createObjectURL(fileToPlay);
       if (audioRef.current) {
         audioRef.current.src = objectUrl;
       }
@@ -52,22 +60,20 @@ export const LyricsViewerModal: React.FC<LyricsViewerModalProps> = ({
     };
   }, [song]);
 
-  // Playback timer (synced to real audio or timer simulation)
+  // Playback timer (synced to real audio)
   useEffect(() => {
     if (isPlaying) {
       const interval = setInterval(() => {
-        if (audioRef.current && song.fileObj) {
+        if (audioRef.current) {
           setCurrentTime(audioRef.current.currentTime);
-        } else {
-          setCurrentTime((prev) => prev + 0.1);
         }
-      }, 100);
+      }, 50);
       timerRef.current = interval;
       return () => clearInterval(interval);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
-  }, [isPlaying, song.fileObj]);
+  }, [isPlaying]);
 
   // Determine active lyric line
   useEffect(() => {
@@ -98,10 +104,10 @@ export const LyricsViewerModal: React.FC<LyricsViewerModalProps> = ({
 
   const togglePlay = () => {
     if (isPlaying) {
-      if (audioRef.current && song.fileObj) audioRef.current.pause();
+      if (audioRef.current) audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      if (audioRef.current && song.fileObj) {
+      if (audioRef.current) {
         audioRef.current.play().catch(console.warn);
       }
       setIsPlaying(true);
@@ -110,7 +116,7 @@ export const LyricsViewerModal: React.FC<LyricsViewerModalProps> = ({
 
   const handleJumpToLine = (time: number) => {
     setCurrentTime(time);
-    if (audioRef.current && song.fileObj) {
+    if (audioRef.current) {
       audioRef.current.currentTime = time;
     }
   };

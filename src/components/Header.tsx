@@ -1,9 +1,10 @@
 import React from 'react';
-import { HardDrive, Server, FolderOpen, Music2, Sparkles, Download, Upload } from 'lucide-react';
+import { HardDrive, Server, FolderOpen, Music2, Sparkles, Download, Upload, Clock } from 'lucide-react';
 
 interface HeaderProps {
   onOpenDirectory: () => void;
   onOpenSmbModal: () => void;
+  onOpenCreator: () => void;
   onLoadDemo: () => void;
   onExportState: () => void;
   onImportState: () => void;
@@ -15,6 +16,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   onOpenDirectory,
   onOpenSmbModal,
+  onOpenCreator,
   onLoadDemo,
   onExportState,
   onImportState,
@@ -79,6 +81,14 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
             <span>Demo laden</span>
+          </button>
+
+          <button
+            onClick={onOpenCreator}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/40 rounded-lg transition-colors whitespace-nowrap shrink-0 shadow-sm"
+          >
+            <Clock className="w-3.5 h-3.5 text-emerald-400" />
+            <span>LRC Creator</span>
           </button>
 
           <button

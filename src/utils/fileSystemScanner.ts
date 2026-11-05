@@ -176,26 +176,50 @@ export function scanFilesFromInput(fileList: FileList): SongFile[] {
 }
 
 /**
- * Writes or downloads an LRC file for a song
+ * Writes or downloads an LRC file for a song with 1-to-1 exact filename match
  */
-export async function saveLrcForSong(song: SongFile, lrcContent: string): Promise<boolean> {
-  // If we have a folderHandle from File System Access API
+export async function saveLrcForSong(
+  song: SongFile,
+  lrcContent: string,
+  rootDirHandle?: any
+): Promise<boolean> {
+  const lrcName = song.name.replace(/\.[a-zA-Z0-9]+$/, '.lrc');
+
+  // 1. Try song.folderHandle if available directly
   if (song.folderHandle && typeof song.folderHandle.getFileHandle === 'function') {
     try {
-      const lrcName = song.name.replace(/\.[a-zA-Z0-9]+$/, '.lrc');
       const fileHandle = await song.folderHandle.getFileHandle(lrcName, { create: true });
       const writable = await fileHandle.createWritable();
       await writable.write(lrcContent);
       await writable.close();
       return true;
     } catch (err) {
-      console.warn('Could not write directly via folderHandle, falling back to download:', err);
+      console.warn('Direct write via song.folderHandle failed, trying rootHandle:', err);
     }
   }
 
-  // Fallback: trigger a browser download of the .lrc file
+  // 2. Try rootDirHandle (navigating into song.folder subdirectories)
+  if (rootDirHandle && typeof rootDirHandle.getDirectoryHandle === 'function') {
+    try {
+      let targetHandle = rootDirHandle;
+      if (song.folder && song.folder !== 'Root' && song.folder !== '.') {
+        const parts = song.folder.split('/').filter((p) => p.length > 0);
+        for (const part of parts) {
+          targetHandle = await targetHandle.getDirectoryHandle(part, { create: true });
+        }
+      }
+      const fileHandle = await targetHandle.getFileHandle(lrcName, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(lrcContent);
+      await writable.close();
+      return true;
+    } catch (err) {
+      console.warn('Traversal via rootDirHandle failed, falling back to download:', err);
+    }
+  }
+
+  // 3. Fallback: trigger a browser download of the .lrc file with 1-to-1 exact matching name
   try {
-    const lrcName = song.name.replace(/\.[a-zA-Z0-9]+$/, '.lrc');
     const blob = new Blob([lrcContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

@@ -18,6 +18,13 @@ import {
   saveCustomLrc,
   exportLibraryState,
   importLibraryState,
+  saveCachedLibrary,
+  getCachedLibrary,
+  saveActiveTab,
+  getSavedActiveTab,
+  storeDirectoryHandle,
+  getStoredDirectoryHandle,
+  verifyDirectoryPermission,
 } from './services/storageService';
 import { searchLyrics } from './services/lrclibService';
 import { Header } from './components/Header';
@@ -27,6 +34,7 @@ import { SongTable } from './components/SongTable';
 import { LyricsViewerModal } from './components/LyricsViewerModal';
 import { LrcSearchModal } from './components/LrcSearchModal';
 import { SmbConfigModal } from './components/SmbConfigModal';
+import { LrcCreatorModal } from './components/LrcCreatorModal';
 import { BatchActionsBar } from './components/BatchActionsBar';
 import {
   Search,
@@ -42,16 +50,19 @@ import {
 
 export default function App() {
   const [songs, setSongs] = useState<SongFile[]>([]);
-  const [activeTab, setActiveTab] = useState<TabType>('open');
+  const [activeTab, setActiveTab] = useState<TabType>(getSavedActiveTab());
   const [searchQuery, setSearchQuery] = useState('');
   const [formatFilter, setFormatFilter] = useState<string>('all');
   const [currentSource, setCurrentSource] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
+  const [hasStoredFolder, setHasStoredFolder] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<{ count: number; folder: string } | undefined>();
 
   // Modals
   const [viewerSong, setViewerSong] = useState<SongFile | null>(null);
   const [searchSong, setSearchSong] = useState<SongFile | null>(null);
+  const [creatorSong, setCreatorSong] = useState<SongFile | null>(null);
+  const [isCreatorOpen, setIsCreatorOpen] = useState(false);
   const [isSmbModalOpen, setIsSmbModalOpen] = useState(false);
 
   // Selection
@@ -64,15 +75,32 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  // Load demo library on initial mount so the user has immediate data to test
+  // Load cached library on mount so the user never has to re-pick or re-check!
   useEffect(() => {
-    loadDemo();
+    // 1. Try to restore cached library
+    const cached = getCachedLibrary();
+    if (cached && cached.songs && cached.songs.length > 0) {
+      setSongs(cached.songs);
+      setCurrentSource(cached.source);
+    } else {
+      loadDemo();
+    }
+
+    // 2. Check for stored DirectoryHandle in IndexedDB
+    getStoredDirectoryHandle().then(async (handle) => {
+      if (handle) {
+        dirHandleRef.current = handle;
+        setHasStoredFolder(handle.name);
+      }
+    });
   }, []);
 
   const loadDemo = () => {
     const demo = getDemoMusicLibrary();
     setSongs(demo);
-    setCurrentSource('Demo SMB-Freigabe (192.168.1.100/Musik)');
+    const src = 'Demo SMB-Freigabe (192.168.1.100/Musik)';
+    setCurrentSource(src);
+    saveCachedLibrary(demo, src);
     setSelectedIds(new Set());
   };
 
@@ -85,13 +113,18 @@ export default function App() {
           mode: 'readwrite',
         });
         dirHandleRef.current = handle;
-        setCurrentSource(`Ordner: ${handle.name}`);
+        await storeDirectoryHandle(handle);
+        setHasStoredFolder(handle.name);
+
+        const src = `Ordner: ${handle.name}`;
+        setCurrentSource(src);
 
         const scannedSongs = await scanDirectoryWithHandle(handle, (count, folder) => {
           setScanProgress({ count, folder });
         });
 
         setSongs(scannedSongs);
+        saveCachedLibrary(scannedSongs, src);
         setSelectedIds(new Set());
         setIsScanning(false);
         setScanProgress(undefined);
@@ -112,8 +145,10 @@ export default function App() {
     if (e.target.files && e.target.files.length > 0) {
       setIsScanning(true);
       const scanned = scanFilesFromInput(e.target.files);
+      const src = `Ausgewählter Ordner (${scanned.length} Titel)`;
       setSongs(scanned);
-      setCurrentSource(`Ausgewählter Ordner (${scanned.length} Titel)`);
+      setCurrentSource(src);
+      saveCachedLibrary(scanned, src);
       setSelectedIds(new Set());
       setIsScanning(false);
     }
@@ -121,7 +156,15 @@ export default function App() {
 
   // Connect SMB configuration
   const handleConnectSMB = (config: SMBConfig) => {
-    setCurrentSource(`SMB: \\\\${config.host}\\${config.share}${config.path || ''}`);
+    const src = `SMB: \\\\${config.host}\\${config.share}${config.path || ''}`;
+    setCurrentSource(src);
+    saveCachedLibrary(songs, src);
+  };
+
+  // Tab switch with persistence
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    saveActiveTab(tab);
   };
 
   // Toggle "Keine Lyrics" (Remix / Instrumental)
@@ -137,8 +180,8 @@ export default function App() {
       reason: finalReason,
     });
 
-    setSongs((prev) =>
-      prev.map((s) => {
+    setSongs((prev) => {
+      const updated = prev.map((s) => {
         if (s.id === song.id) {
           return {
             ...s,
@@ -147,29 +190,36 @@ export default function App() {
           };
         }
         return s;
-      })
-    );
+      });
+      saveCachedLibrary(updated, currentSource);
+      return updated;
+    });
   };
 
   // Apply lyrics from LRCLIB or manual editor
   const handleSaveLrc = async (song: SongFile, lrcContent: string) => {
-    await saveLrcForSong(song, lrcContent);
+    // 1-to-1 exact filename matching and direct SMB / folder write
+    await saveLrcForSong(song, lrcContent, dirHandleRef.current);
     saveCustomLrc(song.id, lrcContent);
 
-    setSongs((prev) =>
-      prev.map((s) => {
+    const exactLrcName = song.name.replace(/\.[a-zA-Z0-9]+$/, '.lrc');
+
+    setSongs((prev) => {
+      const updated = prev.map((s) => {
         if (s.id === song.id) {
           return {
             ...s,
             hasLrc: true,
             lrcContent,
-            lrcFileName: s.name.replace(/\.[a-zA-Z0-9]+$/, '.lrc'),
+            lrcFileName: exactLrcName,
             isNoLyrics: false, // If lyrics are added, it's no longer marked as no lyrics!
           };
         }
         return s;
-      })
-    );
+      });
+      saveCachedLibrary(updated, currentSource);
+      return updated;
+    });
   };
 
   // Multi-selection
@@ -389,6 +439,10 @@ export default function App() {
       <Header
         onOpenDirectory={handleOpenDirectory}
         onOpenSmbModal={() => setIsSmbModalOpen(true)}
+        onOpenCreator={() => {
+          setCreatorSong(null);
+          setIsCreatorOpen(true);
+        }}
         onLoadDemo={loadDemo}
         onExportState={handleExportState}
         onImportState={() => importInputRef.current?.click()}
@@ -402,7 +456,7 @@ export default function App() {
         {/* Stats Grid */}
         <StatsCards
           stats={stats}
-          onFilterTab={setActiveTab}
+          onFilterTab={handleTabChange}
           activeTab={activeTab}
         />
 
@@ -410,7 +464,7 @@ export default function App() {
         <div className="space-y-4">
           <TabsNavigation
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={handleTabChange}
             stats={stats}
           />
 
@@ -463,8 +517,32 @@ export default function App() {
           <SongTable
             songs={filteredSongs}
             onToggleNoLyrics={handleToggleNoLyrics}
-            onOpenViewer={(song) => setViewerSong(song)}
+            onOpenViewer={async (song) => {
+              let resolved = song;
+              if (!resolved.fileObj && resolved.fileHandle && typeof resolved.fileHandle.getFile === 'function') {
+                try {
+                  const file = await resolved.fileHandle.getFile();
+                  resolved = { ...resolved, fileObj: file };
+                } catch (e) {
+                  console.warn('Could not read file from fileHandle:', e);
+                }
+              }
+              setViewerSong(resolved);
+            }}
             onOpenSearch={(song) => setSearchSong(song)}
+            onOpenCreator={async (song) => {
+              let resolved = song;
+              if (!resolved.fileObj && resolved.fileHandle && typeof resolved.fileHandle.getFile === 'function') {
+                try {
+                  const file = await resolved.fileHandle.getFile();
+                  resolved = { ...resolved, fileObj: file };
+                } catch (e) {
+                  console.warn('Could not read file from fileHandle:', e);
+                }
+              }
+              setCreatorSong(resolved);
+              setIsCreatorOpen(true);
+            }}
             onDownloadLrc={(song) => saveLrcForSong(song, song.lrcContent || '')}
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelect}
@@ -499,6 +577,21 @@ export default function App() {
           onClose={() => setSearchSong(null)}
           onApplyLyrics={handleSaveLrc}
           onMarkNoLyrics={handleToggleNoLyrics}
+        />
+      )}
+
+      {isCreatorOpen && (
+        <LrcCreatorModal
+          song={creatorSong}
+          onClose={() => {
+            setIsCreatorOpen(false);
+            setCreatorSong(null);
+          }}
+          onSaveLrc={async (songToSave, lrcContent) => {
+            if (creatorSong) {
+              await handleSaveLrc(creatorSong, lrcContent);
+            }
+          }}
         />
       )}
 
