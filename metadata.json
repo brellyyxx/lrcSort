@@ -1,0 +1,6 @@
+{
+  "name": "LRC Hub - SMB Lyrics Manager",
+  "description": "Verwalte deine Musiksammlung über SMB und lokale Freigaben. Erkenne vorhandene und fehlende .lrc-Dateien, markiere Ausnahmen (Remix, Instrumental) und lade synchronisierte Lyrics herunter.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
